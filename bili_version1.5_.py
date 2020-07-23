@@ -12,8 +12,6 @@ import sys
 import os
 import json
 import io
-import urllib
-import urllib2
 import urllib3
 import requests
 import subprocess
@@ -30,12 +28,6 @@ sys.setdefaultencoding("utf-8")
 
 
 
-
-ffpmpegRoot=os.path.abspath(os.path.dirname(__file__)).replace('\\','/')
-
-ffmpeg=ffpmpegRoot+"/ffmpeg/bin/ffmpeg.exe"
-ffplay=ffpmpegRoot+"/ffmpeg/bin/ffplay.exe"
-ffprobe=ffpmpegRoot+"/ffmpeg/bin/ffprobe=.exe"
 #*************************表头参数**************************
 
 image_name=""
@@ -84,13 +76,6 @@ class TextProgressDialog(QLabel):
        
         QLabel.__init__(self, parent)
         self.setWindowTitle('Progress')
-        #self.setWindowModality(QtCore.Qt.WindowModal)
-        #self.setWindowFlags(QtCore.Qt.Dialog)
-        #self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.FramelessWindowHint)
-        #self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
-        #self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.CustomizeWindowHint)
-        #self.setWindowFlags(QtCore.Qt.Popup)
-
 
         
        
@@ -364,7 +349,7 @@ class bilibili_(QWidget):
         #self._list=Listview()
 
         down_address=QLabel(u'输入下载地址：')
-        self.down_address=QLineEdit("https://www.bilibili.com/video/BV1K7411b7Gp?from=search&seid=14568016733497290075")
+        self.down_address=QLineEdit("")
         analyze=QPushButton(u"解析")
 
         
@@ -450,10 +435,41 @@ class bilibili_(QWidget):
         
 
     @showProgress(label="My label")
+    def flv_Download(self,video_address,new_name,headerss):
+        self.start_down.setEnabled(False)
+        print new_name
+ 
+        try:
+            if not os.path.exists(new_name):
+                 with closing(requests.get(video_address,headers=headerss,stream=True)) as response:
+                    chunk_size = 2048  # 单次请求最大值
+                    content_size = int(response.headers['content-length'])  # 内容体总大小
+                    data_count = 0
+                    with open(new_name, "wb") as file:
+                        for data in response.iter_content(chunk_size=chunk_size):
+                            file.write(data)
+                            data_count = data_count + len(data)
+                            now_jd = (float(data_count) / content_size) * 100
+                            print("文件下载进度：%.2f%s".decode("utf-8") % (now_jd,"%"))
+            else:
+                print ("file exists!")
+                
+                 
+                           
+            self.pbar.setValue(100)
+            self.start_down.setEnabled(True)
+        except Exception as e:
+                print e
+
+
     def startDownload(self):
         
         if str(self.down_address.text())=="" or str(self.save_address.text())=="":
             QMessageBox.information(self,u"提示", u"请输入网址和下载地址，视频名称可不写")
+            return
+
+        if "av" not in str(self.down_address.text()):
+            QMessageBox.information(self,u"提示", u"请先解析！")
             return
 
         url=str(self.down_address.text())
@@ -491,44 +507,29 @@ class bilibili_(QWidget):
         downpos=str(self.save_address.text()).decode('utf-8')
         new_name=downpos+"/" + title+".flv"
 
-        self.start_down.setEnabled(False)
-        print new_name
- 
-        try:
-            if not os.path.exists(new_name):
-                 with closing(requests.get(video_address,headers=headerss,stream=True)) as response:
-                    chunk_size = 2048  # 单次请求最大值
-                    content_size = int(response.headers['content-length'])  # 内容体总大小
-                    data_count = 0
-                    with open(new_name, "wb") as file:
-                        for data in response.iter_content(chunk_size=chunk_size):
-                            file.write(data)
-                            data_count = data_count + len(data)
-                            now_jd = (float(data_count) / content_size) * 100
-                            print("文件下载进度：%.2f%s".decode("utf-8") % (now_jd,"%"))
-                 
-                           
-            self.pbar.setValue(100)
-            self.start_down.setEnabled(True)
-        except Exception as e:
-                print e
+        self.flv_Download(video_address,new_name,headerss)
 
-        
+                
     def resolve(self):
         
         if str(self.down_address.text())=="":
             QMessageBox.information(self,u"提示", u"请输入网址")
             return
-        #currentPos=os.path.abspath(os.path.dirname(__file__))
-        #os.chdir(currentPos)
+        if str(self.save_address.text())=="":
+            QMessageBox.information(self,u"提示", u"请输入下载地址！")
+            return
+        if "av" in str(self.down_address.text()):
+            QMessageBox.information(self,u"提示", u"已解析完成！")
+            return
+        
         url=str(self.down_address.text())
         response = requests.get(url, headers=headers)
         
         title=re.findall("<title .*?>(.*?)</title>",response.text)
         title = re.sub("[~ ゜-゜&;？❤()]+".decode("utf8"), "".decode("utf8"),title[0])
         name="cache/text.html"
-        with open(name, "wb") as f:
-            f.write((response.text).encode("utf-8"))
+        #with open(name, "wb") as f:
+        #f.write((response.text).encode("utf-8"))
         
         regt= re.compile(r'(https://www.bilibili.com/video/av\d+/)')
         av_num=re.findall(regt,response.text)
@@ -542,6 +543,10 @@ class bilibili_(QWidget):
         if title!="" and av_num!=[]:
             self.loadImage(av_num[0])
             self.file_name.setText(str(title).decode("utf-8"))
+            history=[str(self.save_address.text()),str(title).decode("utf-8")]
+            with open("cache/history.part", "w") as films:
+                end = json.dumps(history, indent=4)
+                films.write(end)
             #QMessageBox.information(self,u"提示", u"解析完成")
         else:
             QMessageBox.information(self,u"提示", u"解析失败，无法下载")
@@ -596,8 +601,8 @@ class bilibili_(QWidget):
            
     def openVideo(self):
         
-        if os.path.exists(ffpmpegRoot+"/cache/history.part"):
-            with open(ffpmpegRoot+"/cache/history.part") as file:
+        if os.path.exists("cache/history.part"):
+            with open("cache/history.part") as file:
                 filedata= json.loads(file.read())
                 filepos=filedata[0]
                 filename= filedata[1]
